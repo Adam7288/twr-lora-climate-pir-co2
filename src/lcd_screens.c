@@ -328,7 +328,7 @@ void renderCalibration() {
     struct tm tmp_time;
 
     twr_module_lcd_set_font(&twr_font_ubuntu_15);
-    twr_module_lcd_draw_string(5, 12, "Calibration", true);
+    twr_module_lcd_draw_string(5, 15, "Calibration", true);
 
     if(!calibration_task_id) {
 
@@ -336,7 +336,7 @@ void renderCalibration() {
 
         //last fresh air cal
         if(!time_since_last_fresh_air_cal) 
-            twr_module_lcd_draw_string(5, 30, "Last Fresh Air Calibrate: Never", true);
+            twr_module_lcd_draw_string(5, 40, "Last Fresh Air Calibrate: never", true);
     
         else {
         
@@ -345,20 +345,20 @@ void renderCalibration() {
 
             days = seconds / (24*60*60);
             hours = (seconds - (days * 60 * 60 * 24)) / (60 * 60);
-            minutes = seconds
+            minutes = (seconds
                 - (days * 60 * 60 * 24)
-                - (hours * 60 * 60);
+                - (hours * 60 * 60)) / 60;
 
-            twr_module_lcd_draw_string(5, 30, "Last Fresh Air Calibrate", true);
+            twr_module_lcd_draw_string(5, 40, "Last Fresh Air Calibrate", true);
 
-            snprintf(status_string, sizeof(status_string), "%d days %d hours %d minutes ago", 
+            snprintf(status_string, sizeof(status_string), "%d days %d hrs %d mins ago", 
                 days, hours, minutes);
-            twr_module_lcd_draw_string(5, 40, status_string, true);
+            twr_module_lcd_draw_string(5, 50, status_string, true);
         }
 
         //last ABC cal
         if(!time_since_last_abc_cal) 
-            twr_module_lcd_draw_string(5, 45, "Last Automatic Calibrate: Never", true);
+            twr_module_lcd_draw_string(5, 65, "Last Automatic Calibrate: never", true);
         
         else {
         
@@ -367,15 +367,15 @@ void renderCalibration() {
 
             days = seconds / (24*60*60);
             hours = (seconds - (days * 60 * 60 * 24)) / (60 * 60);
-            minutes = seconds
+            minutes = (seconds
                 - (days * 60 * 60 * 24)
-                - (hours * 60 * 60);
+                - (hours * 60 * 60)) / 60;
 
-            twr_module_lcd_draw_string(5, 45, "Last Automatic Calibrate", true);
+            twr_module_lcd_draw_string(5, 65, "Last Automatic Calibrate", true);
 
-            snprintf(status_string, sizeof(status_string), "%d days %d hours %d minutes ago", 
+            snprintf(status_string, sizeof(status_string), "%d days %d hrs %d mins ago", 
                 days, hours, minutes);
-            twr_module_lcd_draw_string(5, 55, status_string, true);
+            twr_module_lcd_draw_string(5, 75, status_string, true);
         }
     }
     else {
@@ -389,6 +389,9 @@ void renderCalibration() {
         snprintf(status_string, sizeof(status_string), "%d / %d", 
                 calibration_counter, CALIBRATION_NUM_SAMPLES);
         twr_module_lcd_draw_string(30, 60, status_string, true);
+
+        twr_module_lcd_set_font(&twr_font_ubuntu_11);
+        twr_module_lcd_draw_string(5, 90, "make sure unit is in fresh air", true);
     }
 
    
