@@ -3,16 +3,12 @@ TODO
 1. update cur_time with unix time stamp when receiving downlink (adjust for transmission counter array)
 2. convert unix timestamp to struct tm + twr_rtc_set_datetime
 
-2a. hold and click animation on bottom row
+3. hold select animation on bottom row + better explanation of hold btn action
 
-3. ubuntu font between 15 and 24 - 20 for temp
-4. display buttons (context sensitive to page num)
-5. Calibration page with cut status + cancel
-6. Lora page + config params at top
+4. Display next scheduled ABC calibration (have to get # of ticks until running - cant rely on timestamps since internal notion of time can change)
 
-7. ABC calibration every 7 days with enable flag at top and other configs
-
-8. Last 2 bytes of downlink can schedule things like calibrate, homing message, cur location / dev name
+5. ubuntu font between 15 and 24 - 20 for temp
+6. Last 2 bytes of downlink can schedule things like calibrate, homing message, cur location / dev name
 
 */
 
@@ -24,11 +20,12 @@ TODO
 
 #define MAX(a,b) ((a) > (b) ? (a) : (b))
 
-#define SEND_DATA_INTERVAL          (1 * 60 * 1000)
+#define SEND_DATA_INTERVAL          (5 * 60 * 1000)
 #define MEASURE_INTERVAL            (1 * 60 * 1000)
 #define MEASURE_INTERVAL_BAROMETER  (5 * 60 * 1000)
 #define MEASURE_INTERVAL_CO2        (2 * 60 * 1000)
 #define MEASURE_INTERVAL_BATTERY    (5 * 60 * 1000)
+//battery also measured during lora transmission
 
 #define CALIBRATION_START_DELAY (30 * 1000)
 #define CALIBRATION_MEASURE_INTERVAL (40 * 1000)
@@ -38,6 +35,8 @@ TODO
 
 #define MAX_PAGE_INDEX 2
 #define PAGE_INDEX_MENU -1
+
+#define NUM_FAILED_LINK_CHECKS_TO_UNJOIN 30
 
 //LoRaWAN vars (region specific) - see https://sdk.hardwario.com/group__twr__cmwx1zzabz
 twr_cmwx1zzabz_config_class_t LORA_CLASS = TWR_CMWX1ZZABZ_CONFIG_CLASS_A;
@@ -74,6 +73,8 @@ int32_t snr = 0;
 int32_t rssi = 0;
 uint8_t margin = 0;
 uint8_t gateway_count = 0;
+uint8_t num_failed_link_checks = 0;
+float lowest_voltage = INFINITY;
 
 static void check_connection(void* param);
 static void check_connection_now();
@@ -116,6 +117,8 @@ static const struct {
 
 twr_scheduler_task_id_t lcd_task_id;
 twr_scheduler_task_id_t connection_check_task_id;
+twr_scheduler_task_id_t battery_measure_task_id;
+
 
 enum {
     HEADER_BOOT         = 0x00,
@@ -132,6 +135,7 @@ int calibration_counter;
 
 uint32_t time_since_last_abc_cal = 0;
 uint32_t time_since_last_fresh_air_cal = 0;
+uint32_t next_fresh_air_calibration_time;
 
 void calibration_task(void *);
 void auto_calibration_task(void *);
@@ -288,7 +292,6 @@ void lcd_event_handler(twr_module_lcd_event_t event, void *event_param)
     }
     else if(event == TWR_MODULE_LCD_EVENT_LEFT_HOLD)
     {
-        
         if(page_index == 0 && is_connected) {
             twr_scheduler_plan_now(0); //should send lora data
         }
@@ -309,11 +312,7 @@ void lcd_event_handler(twr_module_lcd_event_t event, void *event_param)
             at_calibration();
         }
         else if(page_index == 1) {
-
-            if(is_connected) {
-
-                reconnect_lora();
-            }
+            reconnect_lora();
         }
 
     }
@@ -447,6 +446,9 @@ void battery_event_handler(twr_module_battery_event_t event, void *event_param)
         twr_module_battery_get_voltage(&voltage);
         twr_data_stream_feed(&sm_voltage, &voltage);
 
+        if (voltage < lowest_voltage)
+            lowest_voltage = voltage;
+
         int battery_pct;
         twr_module_battery_get_charge_level(&battery_pct);
         float battery_pct_float = (float) battery_pct;
@@ -454,6 +456,14 @@ void battery_event_handler(twr_module_battery_event_t event, void *event_param)
         twr_data_stream_feed(&sm_battery_pct, &battery_pct_float); 
 
         twr_scheduler_plan_now(lcd_task_id); //update lcd    
+    }
+}
+
+void battery_measure_task(void *param)
+{
+    if (!twr_module_battery_measure())
+    {
+        twr_scheduler_plan_current_now();
     }
 }
 
@@ -495,6 +505,9 @@ void lora_callback(twr_cmwx1zzabz_t *self, twr_cmwx1zzabz_event_t event, void *e
         twr_led_set_mode(&led, TWR_LED_MODE_ON);
 
         twr_atci_printf("$MESSAGE SENT START\r\n");
+
+        //measure battery now because power reqs are the highest
+        twr_scheduler_plan_relative(battery_measure_task_id, 20);
     }
     else if (event == TWR_CMWX1ZZABZ_EVENT_SEND_MESSAGE_DONE)
     {
@@ -537,6 +550,8 @@ void lora_callback(twr_cmwx1zzabz_t *self, twr_cmwx1zzabz_event_t event, void *e
 
         is_connected = true;
 
+        num_failed_link_checks = 0;
+
         twr_cmwx1zzabz_rfq(&lora); //request rfq vals
 
         if(is_connected != init_connected_val)
@@ -551,6 +566,9 @@ void lora_callback(twr_cmwx1zzabz_t *self, twr_cmwx1zzabz_event_t event, void *e
 
         if(is_connected != init_connected_val)
             twr_scheduler_plan_now(lcd_task_id); //update lcd
+
+        if(++num_failed_link_checks >= NUM_FAILED_LINK_CHECKS_TO_UNJOIN)
+            is_joined = false;
 
         twr_atci_printf("LINK BAD\r\n");
     }
@@ -643,6 +661,7 @@ void reconnect_lora() {
 
     is_joined = false;
     is_connected = false;
+    num_failed_link_checks = 0;
 
     // reset lora module + set variables
 
@@ -722,6 +741,7 @@ void application_init(void)
     twr_module_battery_init();
     twr_module_battery_set_update_interval(MEASURE_INTERVAL_BATTERY);
     twr_module_battery_set_event_handler(battery_event_handler, NULL);
+    battery_measure_task_id = twr_scheduler_register(battery_measure_task, NULL, 2020);
 
     //initalize LCD + button
     //memset(&values, 0xff, sizeof(values)); //??????
@@ -792,6 +812,7 @@ void application_task(void)
 
     buffer[0] = header;
 
+    /*
     float voltage_avg = NAN;
 
     twr_data_stream_get_average(&sm_voltage, &voltage_avg);
@@ -800,7 +821,9 @@ void application_task(void)
     {
         buffer[1] = ceil(voltage_avg * 10.f);
     }
-    
+    */
+    buffer[1] = ceil(lowest_voltage * 10.f); //use lowest voltage per Jan Janak recommendation
+
     float battery_pct_avg = NAN;
 
     twr_data_stream_get_average(&sm_battery_pct, &battery_pct_avg);
@@ -831,6 +854,7 @@ void application_task(void)
         buffer[4] = temperature_i16;
     }
 
+    /*
     float humidity_avg = NAN;
 
     twr_data_stream_get_average(&sm_humidity, &humidity_avg);
@@ -866,6 +890,13 @@ void application_task(void)
         buffer[8] = value >> 8;
         buffer[9] = value;
     }
+    */
+
+    buffer[5] = (int16_t)snr >> 8;
+    buffer[6] = (int16_t)snr;
+
+    buffer[7] = (int16_t)rssi >> 8;
+    buffer[8] = (int16_t)rssi;
 
     float co2_avg = NAN;
 

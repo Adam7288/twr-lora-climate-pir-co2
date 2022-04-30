@@ -1,10 +1,3 @@
-/*
-
-Decoder for The Things Network
-
-*/
-
-
 function Decoder(bytes, port) {
   // Decode an uplink message from a buffer
   //const header = bytes[0];
@@ -14,6 +7,12 @@ function Decoder(bytes, port) {
   //const humidity = bytes[5] / 2;
   //const illuminance = ((bytes[6] << 8) | bytes[7]);
   //const pressure = ((bytes[8] << 8) | bytes[9]) * 2.0;
+  const snr = (bytes[5] << 8) | bytes[6];
+  let rssi = (bytes[7] << 8) | bytes[8]
+  if ((rssi & 0x8000) > 0) {
+     rssi = rssi - 0x10000;
+  }
+  
   const co2 = (bytes[10] << 8) | bytes[11];
   const monotonicCounter = bytes[12];
 
@@ -27,6 +26,8 @@ function Decoder(bytes, port) {
     //illuminance,
     //pressure,
     co2,
+    rssi,
+    snr,
     monotonicCounter
   };
 }
