@@ -129,7 +129,7 @@ void renderBtns() {
         else if(is_joined)
             strcpy(hold_string, "");
         else
-            strcpy(hold_string, "reset conn");
+            strcpy(hold_string, "reset conn"); //TODO don't show when first turned on for x mins
 
         twr_module_lcd_draw_string(22, 116, hold_string, true);
 
@@ -343,7 +343,7 @@ void renderCalibration() {
             twr_rtc_get_datetime(&tmp_time);
             seconds = twr_rtc_datetime_to_timestamp(&tmp_time) - time_since_last_fresh_air_cal;
 
-            days = seconds / (24*60*60);
+            days = seconds / (24 * 60 * 60);
             hours = (seconds - (days * 60 * 60 * 24)) / (60 * 60);
             minutes = (seconds
                 - (days * 60 * 60 * 24)
@@ -355,6 +355,8 @@ void renderCalibration() {
                 days, hours, minutes);
             twr_module_lcd_draw_string(5, 50, status_string, true);
         }
+
+        //TODO calc next calibration time
 
         //last ABC cal
         if(!time_since_last_abc_cal) 
@@ -382,7 +384,7 @@ void renderCalibration() {
 
         //display calibration in progress
         twr_module_lcd_set_font(&twr_font_ubuntu_13);
-        twr_module_lcd_draw_string(5, 35, "Calibration in Progress", true);
+        twr_module_lcd_draw_string(5, 35, "Calibration Progress", true);
 
         //sample x/x
         twr_module_lcd_set_font(&twr_font_ubuntu_24);
